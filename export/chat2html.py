@@ -162,6 +162,25 @@ def render_appmsg(txt):
     return None
 
 
+
+
+def download_emoji_from_cdn(md5v, url, out_dir):
+    """Emoji msgs carry a no-auth Tencent CDN direct link; fetch GIF/JPG/PNG."""
+    import urllib.request
+    ep = os.path.join(out_dir, md5v + ".dat")
+    if os.path.exists(ep):
+        return ep
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "MicroMessenger Client"})
+        content = urllib.request.urlopen(req, timeout=15).read()
+        if len(content) > 500:
+            open(ep, "wb").write(content)
+            return ep
+    except Exception:
+        pass
+    return None
+
+
 PAGE = """<!DOCTYPE html>
 <html lang="zh"><head><meta charset="utf-8"><title>__TITLE__</title>
 <style>
@@ -404,6 +423,10 @@ def main():
                 if m:
                     gid = m.group(1)
                     ep = os.path.join(EMO_OUT, gid + ".dat")
+                    if not os.path.exists(ep):
+                        cu = re.search(r'cdnurl\s*=\s*"([^"]+)"', txt)
+                        if cu:
+                            ep = download_emoji_from_cdn(gid, cu.group(1).replace("&amp;", "&"), EMO_OUT)
                     if os.path.exists(ep):
                         d = open(ep, "rb").read()
                         mime = None

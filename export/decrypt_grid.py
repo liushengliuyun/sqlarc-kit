@@ -6,9 +6,10 @@ import sqlcipher as sc
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUTD = os.path.join(os.path.dirname(HERE), "decrypted")
 os.makedirs(OUTD, exist_ok=True)
-DBDIR = os.path.expandvars(r"%USERPROFILE%\Documents\xwechat_files\__WXID___5a3d\db_storage")
+ACC_DIR = os.environ.get("WX2HTML_ACCTDIR", "wxid_xxxxxxxx_xxxx")
+DBDIR = os.path.join(os.path.expanduser("~"), "Documents", "xwechat_files", ACC_DIR, "db_storage")
 
-SLOT = os.path.join(os.path.dirname(HERE), "vtslot")
+SLOT = os.environ.get("WX2HTML_SLOTDIR", os.path.join(os.path.dirname(HERE), "vtslot2"))
 keys = set()
 for f in os.listdir(SLOT):
     if f.endswith("_in.bin") or f.endswith("_out.bin"):

@@ -9,6 +9,7 @@ Use only on your own machine and own account.
 ## Layout
 
 ```
+docs/method.md             FULL reproduction guide (read this first!)
 keys/                      runtime key capture
   dbkey_hook.py            frida vtable hook → dump per-db 32B enc_keys (admin shell required)
   dbkey_scan.py            memory page-scanner for key hunting (fallback)
@@ -23,8 +24,9 @@ binder/
   epubgen.py               EPUB builder
   emoji_map.py             emoji-code → unicode
   sm4.py                   SM4 block cipher (reference)
-tools/                     (optional utilities)
 ```
+
+## Full tutorial: [docs/method.md](docs/method.md)
 
 ## Quick start
 
