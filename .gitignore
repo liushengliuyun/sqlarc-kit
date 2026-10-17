@@ -1,0 +1,10 @@
+__pycache__/
+*.db
+*.db-wal
+image_key.txt
+media/
+emoji_out/
+decrypted/
+books*/
+*.html
+vtslot*/
