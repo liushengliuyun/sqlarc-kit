@@ -447,28 +447,15 @@ def main():
                 html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble sys'>[表情-加密]</div></div>" % (
                     cls, esc(who), ts)
             elif bt == 43:
-                # video: copy mp4 to media/ next to output, embed poster + playable video
+                # video: FULLY inline mp4 as base64 data-URI (single-file shareable)
                 p = videomap.get(lid)
                 if p and os.path.exists(p):
                     n_vid += 1
-                    vrel = None
-                    if out_media:
-                        import shutil as _sh
-                        _fn = "vid_%d.mp4" % lid
-                        _sh.copyfile(p, os.path.join(out_media, _fn))
-                        vrel = "media/" + _fn
+                    vdata = base64.b64encode(open(p, "rb").read()).decode()
                     thumb = p[:-4] + "_thumb.jpg"
-                    if os.path.exists(thumb):
-                        data64 = base64.b64encode(open(thumb, "rb").read()).decode()
-                        if vrel:
-                            html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><video controls preload='metadata' poster='data:image/jpeg;base64,%s' src='%s'></video></div></div>" % (
-                                cls, esc(who), ts, data64, vrel)
-                        else:
-                            html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><video controls preload='metadata' poster='data:image/jpeg;base64,%s' src='file:///%s'></video></div></div>" % (
-                                cls, esc(who), ts, data64, p.replace("\\", "/"))
-                    else:
-                        html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><video controls preload='metadata' src='%s'></video></div></div>" % (
-                            cls, esc(who), ts, vrel or ("file:///" + p.replace("\\", "/")))
+                    poster = ("poster='data:image/jpeg;base64,%s' " % base64.b64encode(open(thumb, "rb").read()).decode()) if os.path.exists(thumb) else ""
+                    html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><video controls preload='metadata' %ssrc='data:video/mp4;base64,%s'></video></div></div>" % (
+                        cls, esc(who), ts, poster, vdata)
                 else:
                     html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble sys'>[视频-缺失]</div></div>" % (
                         cls, esc(who), ts)
