@@ -132,7 +132,7 @@ def render_flat_quote(txt, NAMES):
         esc(reply), esc(qwho or fromusr), esc(rest.strip()[:300]))
 
 
-def render_appmsg(txt):
+def render_appmsg(txt, NAMES):
     if "<appmsg" not in txt and "<refermsg" not in txt:
         return None
     tm = re.search(r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", txt, re.S)
@@ -143,12 +143,32 @@ def render_appmsg(txt):
     if atype == 57 and rm:
         ref = rm.group(1)
         dn = re.search(r"<displayname>(.*?)</displayname>", ref, re.S)
+        fu = re.search(r"<fromusr>(.*?)</fromusr>", ref, re.S)
         co = re.search(r"<content>(.*?)</content>", ref, re.S)
-        qc = unesc(co.group(1)) if co else ""
-        qc = re.sub(r"<[^>]+>", " ", qc)
-        qc = re.sub(r"\s+", " ", qc)
-        qc = re.split(r"\s+view \d+\s", qc)[0].strip()
-        return "quote::%s::%s" % ((dn.group(1) if dn else "").strip() or "?", qc[:300])
+        raw = unesc(co.group(1)) if co else ""
+        qc = ""
+        # quoted content may be: plain text, flattened quote, or ESCAPED XML (nested quote)
+        if raw.startswith("<"):
+            # escaped XML of a whole appmsg — take its <title> only
+            tm2 = re.search(r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", raw, re.S)
+            if tm2:
+                qc = tm2.group(1).strip()
+                # if that nested msg is itself a quote, append "(引用…)" marker is unnecessary;
+                # title already is the right text
+            if not qc:
+                tm3 = re.search(r"<title>(.*?)</title>", re.sub(r"<[^>]+>", " ", raw), re.S)
+                qc = raw  # fallback: leave raw for trimming below
+        else:
+            qc = re.split(r"\s+view \d+\s", re.sub(r"\s+", " ", raw))[0].strip()
+        qc = re.sub(r"\s+", " ", qc)[:300].strip()
+        # display name: shown name, else NAMES[fromusr], else '?'→ keep raw wxid instead
+        qwho = (dn.group(1) if dn else "").strip()
+        if not qwho:
+            fuid = (fu.group(1) if fu else "").strip()
+            qwho = NAMES.get(fuid, fuid) if fuid else "?"
+            if fuid == MINE:
+                qwho = "我"
+        return "quote::%s||%s||%s" % (title.strip(), qwho, qc[:300])
     if atype == 6:
         return "file::" + title[:120]
     dm = re.search(r"<des>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</des>", txt, re.S)
@@ -159,25 +179,6 @@ def render_appmsg(txt):
         return "share::%s::%s" % (title[:120], des[:150])
     if title:
         return "title::" + title[:150]
-    return None
-
-
-
-
-def download_emoji_from_cdn(md5v, url, out_dir):
-    """Emoji msgs carry a no-auth Tencent CDN direct link; fetch GIF/JPG/PNG."""
-    import urllib.request
-    ep = os.path.join(out_dir, md5v + ".dat")
-    if os.path.exists(ep):
-        return ep
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "MicroMessenger Client"})
-        content = urllib.request.urlopen(req, timeout=15).read()
-        if len(content) > 500:
-            open(ep, "wb").write(content)
-            return ep
-    except Exception:
-        pass
     return None
 
 
