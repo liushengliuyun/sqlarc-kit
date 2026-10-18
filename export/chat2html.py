@@ -91,6 +91,36 @@ def wxgf_to_jpg(dec):
     return best[1] if best else None
 
 
+def wxgf_to_jpg(dec):
+    """Decode wxgf HEVC; if the frame looks blank (tiny compressed size), try up to
+    3 frames and keep the biggest — progressive-rendered pics often have a blank
+    first frame. Frames reused across messages must be cleared first (stale-cache
+    bug caused wrong-image reuse)."""
+    h = os.path.join(CACHE, "t.hevc")
+    i = dec.find(b"\x00\x00\x01", 4)
+    if i == -1:
+        i = 4
+    open(h, "wb").write(dec[i:])
+    for n in ("fr00.jpg", "fr01.jpg", "fr02.jpg"):
+        p = os.path.join(CACHE, n)
+        if os.path.exists(p):
+            os.remove(p)
+    try:
+        subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-probesize", "10M", "-analyzeduration", "10M",
+                        "-f", "hevc", "-i", h, "-frames:v", "3", "-update", "0",
+                        os.path.join(CACHE, "fr%02d.jpg")], capture_output=True, timeout=30)
+        best = None
+        for n in ("fr00.jpg", "fr01.jpg", "fr02.jpg"):
+            p = os.path.join(CACHE, n)
+            if os.path.exists(p) and os.path.getsize(p) > 100:
+                sz = os.path.getsize(p)
+                if best is None or sz > best[0]:
+                    best = (sz, open(p, "rb").read())
+    except Exception:
+        return None
+    return best[1] if best else None
+
+
 def load_names():
     con = sqlite3.connect(os.path.join(DEC, "contact_contact.db"))
     names = {}
@@ -330,6 +360,13 @@ def main():
                 imgmap[lid] = dat_index[k]
             break
 
+    md5_by_lid = {}
+    for lid, pi in rrows:
+        pb = pi if isinstance(pi, bytes) else (pi or "").encode()
+        for md5v in re.findall(rb"[0-9a-f]{32}", pb):
+            md5_by_lid[lid] = md5v.decode().lower()
+            break
+
     # video + emoji mappings
     videomap = {}
     con = sqlite3.connect(os.path.join(DEC, "message_message_resource.db"))
@@ -448,6 +485,32 @@ def main():
                 if not ok:
                     # fallback: local-id thumb dats (YYYY_..._t.dat) stored alongside images
                     lp = os.path.join(ATT, H, "Img")
+                    import glob as _g
+                    for candi in ((lid - 1), lid, (lid + 1)):
+                        for cand in _g.glob(os.path.join(lp, "%d_*_t.dat" % candi)):
+                            dec, fmt = v2dec(cand)
+                            if dec and fmt in ("jpg", "png", "gif", "webp"):
+                                ok = True
+                                n_img += 1
+                                html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><img src='data:image/jpeg;base64,%s'/></div></div>" % (
+                                    cls, esc(who), ts, base64.b64encode(dec).decode())
+                                break
+                        if ok:
+                            break
+                if not ok and lid in md5_by_lid:
+                    # md5-thumb fallback: remote pics sometimes only have <md5>_t.dat locally
+                    import glob as _g2
+                    tp = _g2.glob(os.path.join(ATT, "**", md5_by_lid[lid] + "_t.dat"), recursive=True)
+                    if tp:
+                        dec, fmt = v2dec(tp[0])
+                        if dec and fmt in ("jpg", "png", "gif", "webp"):
+                            ok = True
+                            n_img += 1
+                            html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><img src='data:image/jpeg;base64,%s'/></div></div>" % (
+                                cls, esc(who), ts, base64.b64encode(dec).decode())
+                if not ok:
+                    # fallback: local-id thumb dats (YYYY_..._t.dat) stored alongside images
+                    lp = os.path.join(ATT, "Img")
                     import glob as _g
                     for candi in ((lid - 1), lid, (lid + 1)):
                         for cand in _g.glob(os.path.join(lp, "%d_*_t.dat" % candi)):
