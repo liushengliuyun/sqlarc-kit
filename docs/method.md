@@ -101,6 +101,16 @@ What it does internally:
 
 ## 5. Gotchas that cost real time
 
+- **wxgf blank first frame**: progressive-rendered pics store a blank first HEVC frame in
+  the mid-size .dat; the real picture is in `<md5>_h.dat` or in frame 2/3. Decode up to
+  3 frames, keep the largest, and CLEAR frame files between messages (stale-cache reuse
+  actually displayed the previous message's image).
+- **Locally-composed images** never land in msg/attach (nothing is downloaded for images
+  you sent from this PC) — the mid-size HEVC copy + `_h.dat` exist locally, but for files
+  matching by mtime from the send source dir (~/Pictures) as a fallback.
+- **Message write lag**: freshly sent/received messages can take hours to reach the db
+  (WAL not checkpointed); a full WeChat exit forces the flush. Re-decrypt after exit.
+
 - frida `send()` takes ONE ArrayBuffer per message (arrays arrive empty).
 - GBK console: never print raw binary; hex-prefix only.
 - `AppActivate('WeChat')` fails on Chinese titles; login is manual.
