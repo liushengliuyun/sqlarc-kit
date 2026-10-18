@@ -18,6 +18,8 @@ export/
   decrypt_grid.py          captured 32B values × all .db — page-1 HMAC verification (fast, no PBKDF2)
   chat2html.py             single-chat HTML renderer: dates/senders/quotes/images/emoji/video
   export_book.py           bulk exporter (all chats → per-chat HTML/EPUB)
+tools/
+  emoji_from_memory.py     recover no-cdnurl stickers from live render-process memory (wxgf→GIF)
 binder/
   sqlcipher.py             SQLCipher4 page decryptor + WAL merge
   messages.py              message-table helpers
@@ -60,7 +62,10 @@ python export/chat2html.py "聊天名" [起始日期 YYYY-MM-DD] [结束日期]
 - Images: `.dat` V2 format `[6B sig][aes_size][xor_size][pad][AES-128-ECB][raw][XOR tail]`,
   XOR key = **0x9A, account-level constant**; wxgf = HEVC container → ffmpeg first frame.
 - Emoji (type 47): XML carries a **no-auth Tencent CDN direct link** (`cdnurl`);
-  download directly, skip the locally AES-encrypted cache.
+  download directly, skip the locally AES-encrypted cache. Stickers WITHOUT a
+  cdnurl (raw type=2 sends) decrypt only at display time — catch the **wxgf (HEVC)
+  stream in the render process memory** and re-pack frames into a GIF:
+  `python tools/emoji_from_memory.py` (sticker must be visible/animating on screen).
 - Videos (type 43): **plaintext mp4** on disk; copy next to the HTML and use a
   relative `src` (Chrome blocks `file:///` video from a data-URI page).
 - Message `local_type` is 64-bit packed: real type = `lt & 0x3F`; high bits carry
