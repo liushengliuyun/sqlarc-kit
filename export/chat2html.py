@@ -62,23 +62,29 @@ def v2dec(p):
 
 
 def wxgf_to_jpg(dec):
+    """Decode wxgf HEVC; if the frame looks blank (tiny compressed size), try up to
+    3 frames and keep the biggest — progressive-rendered pics often have a blank
+    first frame."""
     h = os.path.join(CACHE, "t.hevc")
-    j = os.path.join(CACHE, "t.jpg")
+    best = None
     i = dec.find(b"\x00\x00\x01", 4)
     if i == -1:
         i = 4
     open(h, "wb").write(dec[i:])
-    if os.path.exists(j):
-        os.remove(j)
     try:
-        subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-f", "hevc", "-i", h,
-                        "-frames:v", "1", "-update", "1", "-q:v", "2", j],
-                       capture_output=True, timeout=30)
+        # up to 3 frames to distinct output files
+        subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-probesize", "10M", "-analyzeduration", "10M",
+                        "-f", "hevc", "-i", h, "-frames:v", "3", "-update", "0",
+                        os.path.join(CACHE, "fr%02d.jpg")], capture_output=True, timeout=30)
+        for n in ("fr00.jpg", "fr01.jpg", "fr02.jpg"):
+            p = os.path.join(CACHE, n)
+            if os.path.exists(p) and os.path.getsize(p) > 100:
+                sz = os.path.getsize(p)
+                if best is None or sz > best[0]:
+                    best = (sz, open(p, "rb").read())
     except Exception:
         return None
-    if os.path.exists(j) and os.path.getsize(j) > 100:
-        return open(j, "rb").read()
-    return None
+    return best[1] if best else None
 
 
 def load_names():
