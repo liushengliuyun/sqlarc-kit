@@ -64,18 +64,22 @@ def v2dec(p):
 def wxgf_to_jpg(dec):
     """Decode wxgf HEVC; if the frame looks blank (tiny compressed size), try up to
     3 frames and keep the biggest — progressive-rendered pics often have a blank
-    first frame."""
+    first frame. Frames reused across messages must be cleared first (stale-cache
+    bug caused wrong-image reuse)."""
     h = os.path.join(CACHE, "t.hevc")
-    best = None
     i = dec.find(b"\x00\x00\x01", 4)
     if i == -1:
         i = 4
     open(h, "wb").write(dec[i:])
+    for n in ("fr00.jpg", "fr01.jpg", "fr02.jpg"):
+        p = os.path.join(CACHE, n)
+        if os.path.exists(p):
+            os.remove(p)
     try:
-        # up to 3 frames to distinct output files
         subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-probesize", "10M", "-analyzeduration", "10M",
                         "-f", "hevc", "-i", h, "-frames:v", "3", "-update", "0",
                         os.path.join(CACHE, "fr%02d.jpg")], capture_output=True, timeout=30)
+        best = None
         for n in ("fr00.jpg", "fr01.jpg", "fr02.jpg"):
             p = os.path.join(CACHE, n)
             if os.path.exists(p) and os.path.getsize(p) > 100:
@@ -239,6 +243,27 @@ def _jpg_dims(d):
     return None
 
 
+def match_local_sent(txt, ct):
+    """Locally-composed images never land in msg/attach. Search common send-source dirs
+    (ComfyUI outputs, Pictures) for an image with mtime near ct."""
+    import glob
+    sources = os.path.join(os.path.expanduser("~"), "Pictures")
+    cands = []
+    for root, dirs, fw in os.walk(sources):
+        for f in fw:
+            if f.lower().endswith((".png", ".jpg", ".jpeg")):
+                fp = os.path.join(root, f)
+                try:
+                    mt = os.path.getmtime(fp)
+                except OSError:
+                    continue
+                dt = abs(mt - ct)
+                if dt < 1800:  # 30 min window
+                    cands.append((dt, fp))
+    cands.sort()
+    return cands[0][1] if cands else None
+
+
 def match_by_time(lid, txt, chat_md5, ct):
     """ResourceInfo sync lag fallback: match unmapped chat dats to message by file mtime."""
     import os as _o
@@ -289,6 +314,12 @@ def main():
         for f in files:
             if f.endswith(".dat") and not f.endswith(("_t.dat", "_h.dat")):
                 dat_index[f[:-4].lower()] = os.path.join(root, f)
+    # full-res _h.dat variants
+    h_index = {}
+    for walk_root, walk_dirs, walk_files in os.walk(ATT):
+        for f in walk_files:
+            if f.endswith("_h.dat"):
+                h_index[f[:-6].lower()] = os.path.join(walk_root, f)
     THUMBS = os.path.join(ROOT, "thumbs_out")
     imgmap = {}
     for lid, pi in rrows:
@@ -405,6 +436,15 @@ def main():
                         n_img += 1
                         html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><img src='data:image/jpeg;base64,%s'/></div></div>" % (
                             cls, esc(who), ts, data64)
+                if not ok:
+                    lp = match_local_sent(txt if isinstance(txt, str) else "", ct)
+                    if lp and os.path.exists(lp):
+                        ok = True
+                        n_img += 1
+                        mime = "image/png" if lp.lower().endswith(".png") else "image/jpeg"
+                        data64 = base64.b64encode(open(lp, "rb").read()).decode()
+                        html = "<div class='msg %s'><div class='meta'><b>%s</b> <span>%s</span></div><div class='bubble'><img src='data:%s;base64,%s'/></div></div>" % (
+                            cls, esc(who), ts, mime, data64)
                 if not ok:
                     # fallback: local-id thumb dats (YYYY_..._t.dat) stored alongside images
                     lp = os.path.join(ATT, H, "Img")
